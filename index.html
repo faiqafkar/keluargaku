@@ -362,13 +362,20 @@ function setSyncDot(state){
 
 // GS
 async function gsGet(sheet){
-  const r=await fetch(GS_URL+'?sheet='+encodeURIComponent(sheet)+'&t='+Date.now(),{redirect:'follow'});
+  const url=GS_URL+'?sheet='+encodeURIComponent(sheet)+'&t='+Date.now();
+  const r=await fetch(url,{redirect:'follow',mode:'cors',credentials:'omit'});
   const rows=await r.json();
   if(!Array.isArray(rows)||!rows.length)return[];
   return rows.map(row=>{try{return JSON.parse(row[0]);}catch(e){return null;}}).filter(Boolean);
 }
 async function gsSet(sheet,data){
-  await fetch(GS_URL,{method:'POST',body:JSON.stringify({sheet,data:data.map(d=>[JSON.stringify(d)])}),redirect:'follow'});
+  await fetch(GS_URL,{
+    method:'POST',
+    body:JSON.stringify({sheet,data:data.map(d=>[JSON.stringify(d)])}),
+    redirect:'follow',
+    mode:'cors',
+    credentials:'omit'
+  });
 }
 
 // Load/Save
