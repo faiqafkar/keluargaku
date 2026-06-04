@@ -361,21 +361,44 @@ function setSyncDot(state){
 }
 
 // GS
+// JSONP - bypass Apps Script redirect/CORS 100%
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = 'cb_'+Date.now()+'_'+Math.floor(Math.random()*9999);
+    const script = document.createElement('script');
+    const timer = setTimeout(()=>{
+      cleanup(); reject(new Error('Timeout'));
+    }, 15000);
+    function cleanup(){
+      delete window[cb];
+      document.head.removeChild(script);
+      clearTimeout(timer);
+    }
+    window[cb] = (data) => { cleanup(); resolve(data); };
+    script.src = url + '&cb=' + cb;
+    script.onerror = () => { cleanup(); reject(new Error('Script error')); };
+    document.head.appendChild(script);
+  });
+}
+
 async function gsGet(sheet){
   const url=GS_URL+'?sheet='+encodeURIComponent(sheet)+'&t='+Date.now();
-  const r=await fetch(url,{redirect:'follow',mode:'cors',credentials:'omit'});
-  const rows=await r.json();
+  const rows = await jsonp(url);
   if(!Array.isArray(rows)||!rows.length)return[];
   return rows.map(row=>{try{return JSON.parse(row[0]);}catch(e){return null;}}).filter(Boolean);
 }
+
 async function gsSet(sheet,data){
-  await fetch(GS_URL,{
-    method:'POST',
-    body:JSON.stringify({sheet,data:data.map(d=>[JSON.stringify(d)])}),
-    redirect:'follow',
-    mode:'cors',
-    credentials:'omit'
-  });
+  try{
+    await fetch(GS_URL,{
+      method:'POST',
+      body:JSON.stringify({sheet,data:data.map(d=>[JSON.stringify(d)])}),
+      redirect:'follow'
+    });
+  }catch(e){
+    // POST fallback via form
+    console.error('gsSet error',e);
+  }
 }
 
 // Load/Save
@@ -405,7 +428,20 @@ async function loadAll(){
     if(el)el.textContent=txt;
     setTimeout(()=>setSyncDot('idle'),2000);
     renderAll();
-  }catch(e){setSyncDot('err');setTimeout(()=>setSyncDot('idle'),3000);}
+  }catch(e){
+    console.error('loadAll error:',e);
+    setSyncDot('err');
+    setTimeout(()=>setSyncDot('idle'),3000);
+    // Show error in page so user knows what's wrong
+    const p = document.getElementById('page-'+curTab);
+    if(p && !wallets.length && !txList.length) {
+      p.innerHTML += `<div style="margin:20px 16px;background:#FFF0F0;border:1px solid #FFD0D0;border-radius:14px;padding:16px;text-align:center;">
+        <p style="font-size:14px;font-weight:700;color:#C0392B;margin-bottom:6px;">⚠️ Gagal load data</p>
+        <p style="font-size:12px;color:#7A6A5A;margin-bottom:12px;">${e.message||'Periksa koneksi internet'}</p>
+        <button onclick="loadAll()" style="background:#6B8F71;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">🔄 Coba Lagi</button>
+      </div>`;
+    }
+  }
 }
 async function syncNow(){await loadAll();}
 async function saveWallets(){setSyncDot('syncing');try{await gsSet('Kantong',wallets);setSyncDot('ok');setTimeout(()=>setSyncDot('idle'),2000);}catch(e){setSyncDot('err');}}
